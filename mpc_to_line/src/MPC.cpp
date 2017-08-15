@@ -47,8 +47,14 @@ size_t a_start = delta_start + N - 1;
 class FG_eval {
  public:
   Eigen::VectorXd coeffs;
+  double delta_last;
+  double a_last;
+
   // Coefficients of the fitted polynomial.
-  FG_eval(Eigen::VectorXd coeffs) { this->coeffs = coeffs; }
+  //FG_eval(Eigen::VectorXd coeffs) { this->coeffs = coeffs; }
+  FG_eval(Eigen::VectorXd coeffs, double delta_last, double a_last) { this->coeffs = coeffs; this->delta_last = delta_last; this->a_last = a_last;}
+  //FG_eval(double delta_last) { this->delta_last = delta_last; }
+  //FG_eval(double a_last) { this->a_last = a_last; }
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   // `fg` is a vector containing the cost and constraints.
@@ -73,9 +79,13 @@ class FG_eval {
 
     // Minimize the value gap between sequential actuations.
     for (int t = 0; t < N - 2; t++) {
-      fg[0] += CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+      fg[0] += 500 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
       fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
+
+    // consider initial actuator position
+    //fg[0] += 10000 * CppAD::pow(vars[delta_start] - delta_last, 2);
+    //fg[0] += CppAD::pow(vars[a_start] - a_last, 2);
 
     //
     // Setup Constraints
@@ -148,7 +158,7 @@ class FG_eval {
 MPC::MPC() {}
 MPC::~MPC() {}
 
-vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
+vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, double delta_last, double a_last) {
   size_t i;
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
@@ -229,7 +239,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   constraints_upperbound[epsi_start] = epsi;
 
   // Object that computes objective and constraints
-  FG_eval fg_eval(coeffs);
+  FG_eval fg_eval(coeffs, delta_last, a_last);
 
   // options
   std::string options;
@@ -298,7 +308,7 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
 
 int main() {
   MPC mpc;
-  int iters = 50;
+  int iters = 60;
 
   Eigen::VectorXd ptsx(2);
   Eigen::VectorXd ptsy(2);
@@ -310,7 +320,7 @@ int main() {
   auto coeffs = polyfit(ptsx, ptsy, 1);
 
   // NOTE: free feel to play around with these
-  double x = -1;
+  double x = 0;
   double y = 10;
   double psi = 0;
   double v = 10;
@@ -333,10 +343,17 @@ int main() {
   std::vector<double> delta_vals = {};
   std::vector<double> a_vals = {};
 
+  // actuators last
+  double delta_last = 0;
+  double a_last = 0;
+
   for (size_t i = 0; i < iters; i++) {
     std::cout << "Iteration " << i << std::endl;
+    std::cout << "delta_last " << delta_last << std::endl;
+    
 
-    auto vars = mpc.Solve(state, coeffs);
+    auto vars = mpc.Solve(state, coeffs, delta_last, a_last);
+    //Eigen::VectorXd vars(8);
 
     x_vals.push_back(vars[0]);
     y_vals.push_back(vars[1]);
@@ -347,6 +364,9 @@ int main() {
 
     delta_vals.push_back(vars[6]);
     a_vals.push_back(vars[7]);
+
+    delta_last = vars[6];
+    a_last = vars[7];
 
     state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5];
     std::cout << "x = " << vars[0] << std::endl;
@@ -366,12 +386,15 @@ int main() {
   plt::subplot(3, 1, 1);
   plt::title("CTE");
   plt::plot(cte_vals);
+  plt::grid(true);
   plt::subplot(3, 1, 2);
   plt::title("Delta (Radians)");
   plt::plot(delta_vals);
+  plt::grid(true);
   plt::subplot(3, 1, 3);
   plt::title("Velocity");
   plt::plot(v_vals);
+  plt::grid(true);
 
   plt::show();
 }
