@@ -82,10 +82,11 @@ class FG_eval {
       fg[0] += 500 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
       fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
+    std::cout << "delta_last_I " << delta_last << std::endl;
 
     // consider initial actuator position
-    //fg[0] += 10000 * CppAD::pow(vars[delta_start] - delta_last, 2);
-    //fg[0] += CppAD::pow(vars[a_start] - a_last, 2);
+    fg[0] += 500 * CppAD::pow(vars[delta_start] - delta_last, 2);
+    fg[0] += CppAD::pow(vars[a_start] - a_last, 2);
 
     //
     // Setup Constraints
