@@ -13,7 +13,7 @@ using CppAD::AD;
 // We set the number of timesteps to 25
 // and the timestep evaluation frequency or evaluation
 // period to 0.05.
-size_t N = 25;
+size_t N = 50;
 double dt = 0.05;
 
 // This value assumes the model presented in the classroom is used.
@@ -30,7 +30,7 @@ const double Lf = 2.67;
 
 // Both the reference cross track and orientation errors are 0.
 // The reference velocity is set to 40 mph.
-double ref_v = 40;
+double ref_v = 10;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -51,10 +51,7 @@ class FG_eval {
   double a_last;
 
   // Coefficients of the fitted polynomial.
-  //FG_eval(Eigen::VectorXd coeffs) { this->coeffs = coeffs; }
   FG_eval(Eigen::VectorXd coeffs, double delta_last, double a_last) { this->coeffs = coeffs; this->delta_last = delta_last; this->a_last = a_last;}
-  //FG_eval(double delta_last) { this->delta_last = delta_last; }
-  //FG_eval(double a_last) { this->a_last = a_last; }
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   // `fg` is a vector containing the cost and constraints.
@@ -85,8 +82,9 @@ class FG_eval {
     std::cout << "delta_last_I " << delta_last << std::endl;
 
     // consider initial actuator position
+    //fg[0] += 500 * CppAD::pow(vars[delta_start] - delta_last, 2);
     fg[0] += 500 * CppAD::pow(vars[delta_start] - delta_last, 2);
-    fg[0] += CppAD::pow(vars[a_start] - a_last, 2);
+    //fg[0] += CppAD::pow(vars[a_start] - a_last, 2);
 
     //
     // Setup Constraints
@@ -247,6 +245,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, double del
   options += "Integer print_level  0\n";
   options += "Sparse  true        forward\n";
   options += "Sparse  true        reverse\n";
+  //options += "Integer max_iter          300\n";
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;
@@ -261,6 +260,9 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, double del
   //
   bool ok = true;
   ok &= solution.status == CppAD::ipopt::solve_result<Dvector>::success;
+
+
+
 
   auto cost = solution.obj_value;
   std::cout << "Cost " << cost << std::endl;
@@ -309,12 +311,12 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
 
 int main() {
   MPC mpc;
-  int iters = 60;
+  int iters = 50;
 
   Eigen::VectorXd ptsx(2);
   Eigen::VectorXd ptsy(2);
   ptsx << -100, 100;
-  ptsy << -1, -1;
+  ptsy << 0, 0;
 
   // The polynomial is fitted to a straight line so a polynomial with
   // order 1 is sufficient.
@@ -352,7 +354,7 @@ int main() {
     std::cout << "Iteration " << i << std::endl;
     std::cout << "delta_last " << delta_last << std::endl;
     
-
+    //if (i > iters/2) {coeffs[0] = -10;}
     auto vars = mpc.Solve(state, coeffs, delta_last, a_last);
     //Eigen::VectorXd vars(8);
 
@@ -384,6 +386,7 @@ int main() {
   // Plot values
   // NOTE: feel free to play around with this.
   // It's useful for debugging!
+  plt::figure();
   plt::subplot(3, 1, 1);
   plt::title("CTE");
   plt::plot(cte_vals);
