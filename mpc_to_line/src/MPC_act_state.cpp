@@ -13,7 +13,7 @@ using CppAD::AD;
 // We set the number of timesteps to 25
 // and the timestep evaluation frequency or evaluation
 // period to 0.05.
-size_t N = 100;
+size_t N = 10;
 double dt = 0.05;
 
 // This value assumes the model presented in the classroom is used.
@@ -247,6 +247,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   options += "Integer print_level  0\n";
   options += "Sparse  true        forward\n";
   options += "Sparse  true        reverse\n";
+  //options += "Integer  acceptable_iter   10\n";
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;

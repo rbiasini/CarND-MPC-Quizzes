@@ -42,7 +42,6 @@ size_t v_start = psi_start + N;
 size_t cte_start = v_start + N;
 size_t epsi_start = cte_start + N;
 size_t delta_start = epsi_start + N;
-size_t a_start = delta_start + N;
 
 class FG_eval {
  public:
@@ -62,19 +61,16 @@ class FG_eval {
     for (int t = 0; t < N; t++) {
       fg[0] += CppAD::pow(vars[cte_start + t], 2);
       fg[0] += CppAD::pow(vars[epsi_start + t], 2);
-      fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
     // Minimize the use of actuators.
     for (int t = 0; t < N - 1; t++) {
       fg[0] += CppAD::pow(vars[delta_start + t], 2);
-      fg[0] += CppAD::pow(vars[a_start + t], 2);
     }
 
     // Minimize the value gap between sequential actuations.
     for (int t = 0; t < N - 1; t++) {
       fg[0] += 7500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
-      fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
 
     //
@@ -94,7 +90,6 @@ class FG_eval {
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
     fg[1 + delta_start] = vars[delta_start];
-    fg[1 + delta_start + 1] = vars[a_start];
 
     // The rest of the constraints
     for (int t = 1; t < N; t++) {
@@ -116,7 +111,7 @@ class FG_eval {
 
       // Only consider the actuation at time t.
       AD<double> delta0 = vars[delta_start + t - 1];
-      AD<double> a0 = vars[a_start + t - 1];
+      AD<double> a0 = 0;
 
       AD<double> f0 = coeffs[0] + coeffs[1] * x0;
       AD<double> psides0 = CppAD::atan(coeffs[1]);
@@ -161,14 +156,13 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   double cte = x0[4];
   double epsi = x0[5];
   double delta = x0[6];
-  double a = x0[7];
 
   // number of independent variables
   // N timesteps == N - 1 actuations
   //size_t n_vars = N * 6 + (N - 1) * 2;
-  size_t n_vars = N * 8;
+  size_t n_vars = N * 7;
   // Number of constraints
-  size_t n_constraints = N * 6 + 2;
+  size_t n_constraints = N * 6 + 1;
 
   // Initial value of the independent variables.
   // Should be 0 except for the initial values.
@@ -184,7 +178,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   vars[cte_start] = cte;
   vars[epsi_start] = epsi;
   vars[delta_start] = delta;
-  vars[a_start] = a;
 
   // Lower and upper limits for x
   Dvector vars_lowerbound(n_vars);
@@ -200,17 +193,11 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   // The upper and lower limits of delta are set to -25 and 25
   // degrees (values in radians).
   // NOTE: Feel free to change this to something else.
-  for (int i = delta_start; i < a_start; i++) {
+  for (int i = delta_start; i < n_vars; i++) {
     vars_lowerbound[i] = -0.436332;
     vars_upperbound[i] = 0.436332;
   }
 
-  // Acceleration/decceleration upper and lower limits.
-  // NOTE: Feel free to change this to something else.
-  for (int i = a_start; i < n_vars; i++) {
-    vars_lowerbound[i] = -1.0;
-    vars_upperbound[i] = 1.0;
-  }
 
   // Lower and upper limits for constraints
   // All of these should be 0 except the initial
@@ -228,7 +215,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   constraints_lowerbound[cte_start] = cte;
   constraints_lowerbound[epsi_start] = epsi;
   constraints_lowerbound[delta_start] = delta;
-  constraints_lowerbound[delta_start + 1] = a;
 
   constraints_upperbound[x_start] = x;
   constraints_upperbound[y_start] = y;
@@ -237,7 +223,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   constraints_upperbound[cte_start] = cte;
   constraints_upperbound[epsi_start] = epsi;
   constraints_upperbound[epsi_start + N] = delta;
-  constraints_upperbound[epsi_start + N + 1] = a;
 
   // Object that computes objective and constraints
   FG_eval fg_eval(coeffs);
@@ -247,6 +232,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   options += "Integer print_level  0\n";
   options += "Sparse  true        forward\n";
   options += "Sparse  true        reverse\n";
+  //options += "Integer  acceptable_iter   10\n";
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;
@@ -290,7 +276,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   return {solution.x[x_start + 1],   solution.x[y_start + 1],
           solution.x[psi_start + 1], solution.x[v_start + 1],
           solution.x[cte_start + 1], solution.x[epsi_start + 1],
-          solution.x[delta_start + 1],   solution.x[a_start + 1]};
+          solution.x[delta_start + 1]};
 }
 
 //
@@ -358,8 +344,8 @@ int main() {
   double delta = 0;
   double a = 0;
 
-  Eigen::VectorXd state(8);
-  state << x, y, psi, v, cte, epsi, delta, a;
+  Eigen::VectorXd state(7);
+  state << x, y, psi, v, cte, epsi, delta;
 
   std::vector<double> x_vals = {state[0]};
   std::vector<double> y_vals = {state[1]};
@@ -368,7 +354,6 @@ int main() {
   std::vector<double> cte_vals = {state[4]};
   std::vector<double> epsi_vals = {state[5]};
   std::vector<double> delta_vals = {state[6]};
-  std::vector<double> a_vals = {state[7]};
 
   for (size_t i = 0; i < iters; i++) {
     std::cout << "Iteration " << i << std::endl;
@@ -385,9 +370,8 @@ int main() {
     epsi_vals.push_back(vars[5]);
 
     delta_vals.push_back(vars[6]);
-    a_vals.push_back(vars[7]);
 
-    state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5], vars[6], vars[7];
+    state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5], vars[6];
     std::cout << "x = " << vars[0] << std::endl;
     std::cout << "y = " << vars[1] << std::endl;
     std::cout << "psi = " << vars[2] << std::endl;
@@ -395,7 +379,6 @@ int main() {
     std::cout << "cte = " << vars[4] << std::endl;
     std::cout << "epsi = " << vars[5] << std::endl;
     std::cout << "delta = " << vars[6] << std::endl;
-    std::cout << "a = " << vars[7] << std::endl;
     std::cout << std::endl;
   }
 
