@@ -30,7 +30,7 @@ const double Lf = 2.67;
 
 // Both the reference cross track and orientation errors are 0.
 // The reference velocity is set to 40 mph.
-double ref_v = 10;
+double ref_v = 0;
 
 // The solver takes all the state variables and actuator
 // variables in a singular vector. Thus, we should to establish
@@ -158,13 +158,10 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   double v = x0[3];
   double cte = x0[4];
   double epsi = x0[5];
-  double delta = x0[6];
-  double a = x0[7];
 
   // number of independent variables
   // N timesteps == N - 1 actuations
-  //size_t n_vars = N * 6 + (N - 1) * 2;
-  size_t n_vars = N * 8;
+  size_t n_vars = N * 6 + (N - 1) * 2;
   // Number of constraints
   size_t n_constraints = N * 6;
 
@@ -181,8 +178,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   vars[v_start] = v;
   vars[cte_start] = cte;
   vars[epsi_start] = epsi;
-  vars[delta_start] = delta;
-  vars[a_start] = a;
 
   // Lower and upper limits for x
   Dvector vars_lowerbound(n_vars);
@@ -225,8 +220,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   constraints_lowerbound[v_start] = v;
   constraints_lowerbound[cte_start] = cte;
   constraints_lowerbound[epsi_start] = epsi;
-  constraints_lowerbound[delta_start] = delta;
-  constraints_lowerbound[a_start] = a;
 
   constraints_upperbound[x_start] = x;
   constraints_upperbound[y_start] = y;
@@ -234,8 +227,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   constraints_upperbound[v_start] = v;
   constraints_upperbound[cte_start] = cte;
   constraints_upperbound[epsi_start] = epsi;
-  constraints_upperbound[delta_start] = delta;
-  constraints_upperbound[a_start] = a;
 
   // Object that computes objective and constraints
   FG_eval fg_eval(coeffs);
@@ -265,7 +256,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs) {
   return {solution.x[x_start + 1],   solution.x[y_start + 1],
           solution.x[psi_start + 1], solution.x[v_start + 1],
           solution.x[cte_start + 1], solution.x[epsi_start + 1],
-          solution.x[delta_start + 1],   solution.x[a_start + 1]};
+          solution.x[delta_start],   solution.x[a_start]};
 }
 
 //
@@ -322,19 +313,16 @@ int main() {
   double x = -1;
   double y = 10;
   double psi = -0.1;
-  double v = 10;
+  double v = 0;
   // The cross track error is calculated by evaluating at polynomial at x, f(x)
   // and subtracting y.
   double cte = polyeval(coeffs, x) - y;
   // Due to the sign starting at 0, the orientation error is -f'(x).
   // derivative of coeffs[0] + coeffs[1] * x -> coeffs[1]
   double epsi = psi - atan(coeffs[1]);
-  // make actuators as states
-  double delta = 0;
-  double a = 0;
 
-  Eigen::VectorXd state(8);
-  state << x, y, psi, v, cte, epsi, delta, a;
+  Eigen::VectorXd state(6);
+  state << x, y, psi, v, cte, epsi;
 
   std::vector<double> x_vals = {state[0]};
   std::vector<double> y_vals = {state[1]};
@@ -342,8 +330,8 @@ int main() {
   std::vector<double> v_vals = {state[3]};
   std::vector<double> cte_vals = {state[4]};
   std::vector<double> epsi_vals = {state[5]};
-  std::vector<double> delta_vals = {state[6]};
-  std::vector<double> a_vals = {state[7]};
+  std::vector<double> delta_vals = {};
+  std::vector<double> a_vals = {};
 
   for (size_t i = 0; i < iters; i++) {
     std::cout << "Iteration " << i << std::endl;
@@ -360,7 +348,7 @@ int main() {
     delta_vals.push_back(vars[6]);
     a_vals.push_back(vars[7]);
 
-    state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5], vars[6], vars[7];
+    state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5];
     std::cout << "x = " << vars[0] << std::endl;
     std::cout << "y = " << vars[1] << std::endl;
     std::cout << "psi = " << vars[2] << std::endl;
