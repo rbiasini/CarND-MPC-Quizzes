@@ -13,7 +13,7 @@ using CppAD::AD;
 // We set the number of timesteps to 25
 // and the timestep evaluation frequency or evaluation
 // period to 0.05.
-size_t N = 10;
+size_t N = 100;
 double dt = 0.05;
 
 // This value assumes the model presented in the classroom is used.
@@ -333,7 +333,7 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
 
 int main() {
   MPC mpc;
-  int iters = 50;
+  int iters = 100;
 
   Eigen::VectorXd ptsx(2);
   Eigen::VectorXd ptsy(2);

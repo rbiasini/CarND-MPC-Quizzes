@@ -38,8 +38,7 @@ double ref_v = 10;
 size_t x_start = 0;
 size_t y_start = x_start + N;
 size_t psi_start = y_start + N;
-size_t v_start = psi_start + N;
-size_t cte_start = v_start + N;
+size_t cte_start = psi_start + N;
 size_t epsi_start = cte_start + N;
 size_t delta_start = epsi_start + N;
 
@@ -86,7 +85,6 @@ class FG_eval {
     fg[1 + x_start] = vars[x_start];
     fg[1 + y_start] = vars[y_start];
     fg[1 + psi_start] = vars[psi_start];
-    fg[1 + v_start] = vars[v_start];
     fg[1 + cte_start] = vars[cte_start];
     fg[1 + epsi_start] = vars[epsi_start];
     fg[1 + delta_start] = vars[delta_start];
@@ -97,7 +95,6 @@ class FG_eval {
       AD<double> x1 = vars[x_start + t];
       AD<double> y1 = vars[y_start + t];
       AD<double> psi1 = vars[psi_start + t];
-      AD<double> v1 = vars[v_start + t];
       AD<double> cte1 = vars[cte_start + t];
       AD<double> epsi1 = vars[epsi_start + t];
 
@@ -105,7 +102,6 @@ class FG_eval {
       AD<double> x0 = vars[x_start + t - 1];
       AD<double> y0 = vars[y_start + t - 1];
       AD<double> psi0 = vars[psi_start + t - 1];
-      AD<double> v0 = vars[v_start + t - 1];
       AD<double> cte0 = vars[cte_start + t - 1];
       AD<double> epsi0 = vars[epsi_start + t - 1];
 
@@ -126,14 +122,13 @@ class FG_eval {
       // v_[t+1] = v[t] + a[t] * dt
       // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
-      fg[1 + x_start + t] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);
-      fg[1 + y_start + t] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);
-      fg[1 + psi_start + t] = psi1 - (psi0 + v0 * delta0 / Lf * dt);
-      fg[1 + v_start + t] = v1 - (v0 + a0 * dt);
+      fg[1 + x_start + t] = x1 - (x0 + ref_v * CppAD::cos(psi0) * dt);
+      fg[1 + y_start + t] = y1 - (y0 + ref_v * CppAD::sin(psi0) * dt);
+      fg[1 + psi_start + t] = psi1 - (psi0 + ref_v * delta0 / Lf * dt);
       fg[1 + cte_start + t] =
-          cte1 - ((f0 - y0) + (v0 * CppAD::sin(epsi0) * dt));
+          cte1 - ((f0 - y0) + (ref_v * CppAD::sin(epsi0) * dt));
       fg[1 + epsi_start + t] =
-          epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);
+          epsi1 - ((psi0 - psides0) + ref_v * delta0 / Lf * dt);
     }
   }
 };
@@ -152,17 +147,16 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   double x = x0[0];
   double y = x0[1];
   double psi = x0[2];
-  double v = x0[3];
-  double cte = x0[4];
-  double epsi = x0[5];
-  double delta = x0[6];
+  double cte = x0[3];
+  double epsi = x0[4];
+  double delta = x0[5];
 
   // number of independent variables
   // N timesteps == N - 1 actuations
   //size_t n_vars = N * 6 + (N - 1) * 2;
-  size_t n_vars = N * 7;
+  size_t n_vars = N * 6;
   // Number of constraints
-  size_t n_constraints = N * 6 + 1;
+  size_t n_constraints = N * 5 + 1;
 
   // Initial value of the independent variables.
   // Should be 0 except for the initial values.
@@ -174,7 +168,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   vars[x_start] = x;
   vars[y_start] = y;
   vars[psi_start] = psi;
-  vars[v_start] = v;
   vars[cte_start] = cte;
   vars[epsi_start] = epsi;
   vars[delta_start] = delta;
@@ -211,7 +204,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   constraints_lowerbound[x_start] = x;
   constraints_lowerbound[y_start] = y;
   constraints_lowerbound[psi_start] = psi;
-  constraints_lowerbound[v_start] = v;
   constraints_lowerbound[cte_start] = cte;
   constraints_lowerbound[epsi_start] = epsi;
   constraints_lowerbound[delta_start] = delta;
@@ -219,7 +211,6 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   constraints_upperbound[x_start] = x;
   constraints_upperbound[y_start] = y;
   constraints_upperbound[psi_start] = psi;
-  constraints_upperbound[v_start] = v;
   constraints_upperbound[cte_start] = cte;
   constraints_upperbound[epsi_start] = epsi;
   constraints_upperbound[epsi_start + N] = delta;
@@ -252,12 +243,12 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   if (iter == 0) {  
     std::vector<double> cte_i = {solution.x[cte_start]};
     std::vector<double> delta_i = {solution.x[delta_start]};
-    std::vector<double> v_i = {solution.x[v_start]};
+    std::vector<double> v_i = {ref_v};
   
     for (int i=1; i < N; i++) {
       cte_i.push_back(solution.x[cte_start + i]);
       delta_i.push_back(solution.x[delta_start + i]);
-      v_i.push_back(solution.x[v_start + i]);}
+      v_i.push_back(ref_v);}
     
     plt::figure();
     plt::subplot(3, 1, 1);
@@ -274,7 +265,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   auto cost = solution.obj_value;
   std::cout << "Cost " << cost << std::endl;
   return {solution.x[x_start + 1],   solution.x[y_start + 1],
-          solution.x[psi_start + 1], solution.x[v_start + 1],
+          solution.x[psi_start + 1],
           solution.x[cte_start + 1], solution.x[epsi_start + 1],
           solution.x[delta_start + 1]};
 }
@@ -333,7 +324,7 @@ int main() {
   double x = -1;
   double y = 10;
   double psi = -0.1;
-  double v = 10;
+  double v = ref_v;
   // The cross track error is calculated by evaluating at polynomial at x, f(x)
   // and subtracting y.
   double cte = polyeval(coeffs, x) - y;
@@ -344,16 +335,16 @@ int main() {
   double delta = 0;
   double a = 0;
 
-  Eigen::VectorXd state(7);
-  state << x, y, psi, v, cte, epsi, delta;
+  Eigen::VectorXd state(6);
+  state << x, y, psi, cte, epsi, delta;
 
   std::vector<double> x_vals = {state[0]};
   std::vector<double> y_vals = {state[1]};
   std::vector<double> psi_vals = {state[2]};
-  std::vector<double> v_vals = {state[3]};
-  std::vector<double> cte_vals = {state[4]};
-  std::vector<double> epsi_vals = {state[5]};
-  std::vector<double> delta_vals = {state[6]};
+  std::vector<double> v_vals = {ref_v};
+  std::vector<double> cte_vals = {state[3]};
+  std::vector<double> epsi_vals = {state[4]};
+  std::vector<double> delta_vals = {state[5]};
 
   for (size_t i = 0; i < iters; i++) {
     std::cout << "Iteration " << i << std::endl;
@@ -365,20 +356,20 @@ int main() {
     x_vals.push_back(vars[0]);
     y_vals.push_back(vars[1]);
     psi_vals.push_back(vars[2]);
-    v_vals.push_back(vars[3]);
-    cte_vals.push_back(vars[4]);
-    epsi_vals.push_back(vars[5]);
+    v_vals.push_back(ref_v);
+    cte_vals.push_back(vars[3]);
+    epsi_vals.push_back(vars[4]);
 
-    delta_vals.push_back(vars[6]);
+    delta_vals.push_back(vars[5]);
 
-    state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5], vars[6];
+    state << vars[0], vars[1], vars[2], vars[3], vars[4], vars[5];
     std::cout << "x = " << vars[0] << std::endl;
     std::cout << "y = " << vars[1] << std::endl;
     std::cout << "psi = " << vars[2] << std::endl;
-    std::cout << "v = " << vars[3] << std::endl;
-    std::cout << "cte = " << vars[4] << std::endl;
-    std::cout << "epsi = " << vars[5] << std::endl;
-    std::cout << "delta = " << vars[6] << std::endl;
+    std::cout << "v = " << ref_v << std::endl;
+    std::cout << "cte = " << vars[3] << std::endl;
+    std::cout << "epsi = " << vars[4] << std::endl;
+    std::cout << "delta = " << vars[5] << std::endl;
     std::cout << std::endl;
   }
 
