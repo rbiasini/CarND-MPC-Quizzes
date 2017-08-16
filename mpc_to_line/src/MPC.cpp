@@ -1,5 +1,6 @@
 #include "MPC.h"
 #include <math.h>
+#include <chrono>
 #include <cppad/cppad.hpp>
 #include <cppad/ipopt/solve.hpp>
 #include "Eigen-3.3/Eigen/Core"
@@ -13,7 +14,7 @@ using CppAD::AD;
 // We set the number of timesteps to 25
 // and the timestep evaluation frequency or evaluation
 // period to 0.05.
-size_t N = 100;
+size_t N = 25;
 double dt = 0.05;
 
 // This value assumes the model presented in the classroom is used.
@@ -69,7 +70,7 @@ class FG_eval {
 
     // Minimize the value gap between sequential actuations.
     for (int t = 0; t < N - 1; t++) {
-      fg[0] += 7500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+      fg[0] += 500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
     }
 
     //
@@ -97,6 +98,7 @@ class FG_eval {
       AD<double> psi1 = vars[psi_start + t];
       AD<double> cte1 = vars[cte_start + t];
       AD<double> epsi1 = vars[epsi_start + t];
+      AD<double> delta1 = vars[delta_start + t];
 
       // The state at time t.
       AD<double> x0 = vars[x_start + t - 1];
@@ -107,7 +109,6 @@ class FG_eval {
 
       // Only consider the actuation at time t.
       AD<double> delta0 = vars[delta_start + t - 1];
-      AD<double> a0 = 0;
 
       AD<double> f0 = coeffs[0] + coeffs[1] * x0;
       AD<double> psides0 = CppAD::atan(coeffs[1]);
@@ -124,7 +125,7 @@ class FG_eval {
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
       fg[1 + x_start + t] = x1 - (x0 + ref_v * CppAD::cos(psi0) * dt);
       fg[1 + y_start + t] = y1 - (y0 + ref_v * CppAD::sin(psi0) * dt);
-      fg[1 + psi_start + t] = psi1 - (psi0 + ref_v * delta0 / Lf * dt);
+      fg[1 + psi_start + t] = psi1 - (psi0 + ref_v * delta1 / Lf * dt);
       fg[1 + cte_start + t] =
           cte1 - ((f0 - y0) + (ref_v * CppAD::sin(epsi0) * dt));
       fg[1 + epsi_start + t] =
@@ -251,13 +252,13 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
       v_i.push_back(ref_v);}
     
     plt::figure();
-    plt::subplot(3, 1, 1);
+    plt::subplot(4, 1, 1);
     plt::title("CTE");
     plt::plot(cte_i);
-    plt::subplot(3, 1, 2);
+    plt::subplot(4, 1, 2);
     plt::title("Delta (Radians)");
     plt::plot(delta_i);
-    plt::subplot(3, 1, 3);
+    plt::subplot(4, 1, 3);
     plt::title("Velocity");
     plt::plot(v_i);
     }
@@ -323,7 +324,7 @@ int main() {
   // NOTE: free feel to play around with these
   double x = -1;
   double y = 10;
-  double psi = -0.1;
+  double psi = 0;
   double v = ref_v;
   // The cross track error is calculated by evaluating at polynomial at x, f(x)
   // and subtracting y.
@@ -351,7 +352,16 @@ int main() {
     
     //if (i > iters/2) {coeffs[0] = 10;}
 
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+
     auto vars = mpc.Solve(state, coeffs, i);
+
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::cout << "Delta t2-t1: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(t2- t1).count()
+        << " milliseconds" << std::endl;
+
 
     x_vals.push_back(vars[0]);
     y_vals.push_back(vars[1]);
@@ -376,15 +386,18 @@ int main() {
   // Plot values
   // NOTE: feel free to play around with this.
   // It's useful for debugging!
-  plt::subplot(3, 1, 1);
+  plt::subplot(4, 1, 1);
   plt::title("CTE");
   plt::plot(cte_vals);
-  plt::subplot(3, 1, 2);
+  plt::subplot(4, 1, 2);
   plt::title("Delta (Radians)");
   plt::plot(delta_vals);
-  plt::subplot(3, 1, 3);
+  plt::subplot(4, 1, 3);
   plt::title("Velocity");
   plt::plot(v_vals);
+  plt::subplot(4, 1, 4);
+  plt::title("Trajectory");
+  plt::plot(x_vals, y_vals);
 
   plt::show();
 }
