@@ -1,5 +1,6 @@
 #include "MPC.h"
 #include <math.h>
+#include <chrono>
 #include <cppad/cppad.hpp>
 #include <cppad/ipopt/solve.hpp>
 #include "Eigen-3.3/Eigen/Core"
@@ -13,7 +14,7 @@ using CppAD::AD;
 // We set the number of timesteps to 25
 // and the timestep evaluation frequency or evaluation
 // period to 0.05.
-size_t N = 100;
+size_t N = 25;
 double dt = 0.05;
 
 // This value assumes the model presented in the classroom is used.
@@ -45,8 +46,9 @@ size_t delta_start = epsi_start + N;
 class FG_eval {
  public:
   Eigen::VectorXd coeffs;
+  double v;
   // Coefficients of the fitted polynomial.
-  FG_eval(Eigen::VectorXd coeffs) { this->coeffs = coeffs; }
+  FG_eval(Eigen::VectorXd coeffs, double v) { this->coeffs = coeffs; this->v = v;}
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   // `fg` is a vector containing the cost and constraints.
@@ -69,7 +71,7 @@ class FG_eval {
 
     // Minimize the value gap between sequential actuations.
     for (int t = 0; t < N - 1; t++) {
-      fg[0] += 7500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+      fg[0] += 500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
     }
 
     //
@@ -97,6 +99,7 @@ class FG_eval {
       AD<double> psi1 = vars[psi_start + t];
       AD<double> cte1 = vars[cte_start + t];
       AD<double> epsi1 = vars[epsi_start + t];
+      AD<double> delta1 = vars[delta_start + t];
 
       // The state at time t.
       AD<double> x0 = vars[x_start + t - 1];
@@ -107,7 +110,6 @@ class FG_eval {
 
       // Only consider the actuation at time t.
       AD<double> delta0 = vars[delta_start + t - 1];
-      AD<double> a0 = 0;
 
       AD<double> f0 = coeffs[0] + coeffs[1] * x0;
       AD<double> psides0 = CppAD::atan(coeffs[1]);
@@ -122,13 +124,13 @@ class FG_eval {
       // v_[t+1] = v[t] + a[t] * dt
       // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
-      fg[1 + x_start + t] = x1 - (x0 + ref_v * CppAD::cos(psi0) * dt);
-      fg[1 + y_start + t] = y1 - (y0 + ref_v * CppAD::sin(psi0) * dt);
-      fg[1 + psi_start + t] = psi1 - (psi0 + ref_v * delta0 / Lf * dt);
+      fg[1 + x_start + t] = x1 - (x0 + v * CppAD::cos(psi0) * dt);
+      fg[1 + y_start + t] = y1 - (y0 + v * CppAD::sin(psi0) * dt);
+      fg[1 + psi_start + t] = psi1 - (psi0 + v * delta1 / Lf * dt);
       fg[1 + cte_start + t] =
-          cte1 - ((f0 - y0) + (ref_v * CppAD::sin(epsi0) * dt));
+          cte1 - ((f0 - y0) + (v * CppAD::sin(epsi0) * dt));
       fg[1 + epsi_start + t] =
-          epsi1 - ((psi0 - psides0) + ref_v * delta0 / Lf * dt);
+          epsi1 - ((psi0 - psides0) + v * delta0 / Lf * dt);
     }
   }
 };
@@ -140,7 +142,7 @@ class FG_eval {
 MPC::MPC() {}
 MPC::~MPC() {}
 
-vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) {
+vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter, double v) {
   size_t i;
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
@@ -216,7 +218,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   constraints_upperbound[epsi_start + N] = delta;
 
   // Object that computes objective and constraints
-  FG_eval fg_eval(coeffs);
+  FG_eval fg_eval(coeffs, v);
 
   // options
   std::string options;
@@ -243,21 +245,21 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   if (iter == 0) {  
     std::vector<double> cte_i = {solution.x[cte_start]};
     std::vector<double> delta_i = {solution.x[delta_start]};
-    std::vector<double> v_i = {ref_v};
+    std::vector<double> v_i = {v};
   
     for (int i=1; i < N; i++) {
       cte_i.push_back(solution.x[cte_start + i]);
       delta_i.push_back(solution.x[delta_start + i]);
-      v_i.push_back(ref_v);}
+      v_i.push_back(v);}
     
     plt::figure();
-    plt::subplot(3, 1, 1);
+    plt::subplot(4, 1, 1);
     plt::title("CTE");
     plt::plot(cte_i);
-    plt::subplot(3, 1, 2);
+    plt::subplot(4, 1, 2);
     plt::title("Delta (Radians)");
     plt::plot(delta_i);
-    plt::subplot(3, 1, 3);
+    plt::subplot(4, 1, 3);
     plt::title("Velocity");
     plt::plot(v_i);
     }
@@ -323,7 +325,7 @@ int main() {
   // NOTE: free feel to play around with these
   double x = -1;
   double y = 10;
-  double psi = -0.1;
+  double psi = 0;
   double v = ref_v;
   // The cross track error is calculated by evaluating at polynomial at x, f(x)
   // and subtracting y.
@@ -341,7 +343,7 @@ int main() {
   std::vector<double> x_vals = {state[0]};
   std::vector<double> y_vals = {state[1]};
   std::vector<double> psi_vals = {state[2]};
-  std::vector<double> v_vals = {ref_v};
+  std::vector<double> v_vals = {v};
   std::vector<double> cte_vals = {state[3]};
   std::vector<double> epsi_vals = {state[4]};
   std::vector<double> delta_vals = {state[5]};
@@ -351,12 +353,21 @@ int main() {
     
     //if (i > iters/2) {coeffs[0] = 10;}
 
-    auto vars = mpc.Solve(state, coeffs, i);
+
+    auto t1 = std::chrono::high_resolution_clock::now();
+
+    auto vars = mpc.Solve(state, coeffs, i, v);
+
+    auto t2 = std::chrono::high_resolution_clock::now();
+    std::cout << "Delta t2-t1: "
+        << std::chrono::duration_cast<std::chrono::milliseconds>(t2- t1).count()
+        << " milliseconds" << std::endl;
+
 
     x_vals.push_back(vars[0]);
     y_vals.push_back(vars[1]);
     psi_vals.push_back(vars[2]);
-    v_vals.push_back(ref_v);
+    v_vals.push_back(v);
     cte_vals.push_back(vars[3]);
     epsi_vals.push_back(vars[4]);
 
@@ -366,7 +377,7 @@ int main() {
     std::cout << "x = " << vars[0] << std::endl;
     std::cout << "y = " << vars[1] << std::endl;
     std::cout << "psi = " << vars[2] << std::endl;
-    std::cout << "v = " << ref_v << std::endl;
+    std::cout << "v = " << v << std::endl;
     std::cout << "cte = " << vars[3] << std::endl;
     std::cout << "epsi = " << vars[4] << std::endl;
     std::cout << "delta = " << vars[5] << std::endl;
@@ -376,15 +387,18 @@ int main() {
   // Plot values
   // NOTE: feel free to play around with this.
   // It's useful for debugging!
-  plt::subplot(3, 1, 1);
+  plt::subplot(4, 1, 1);
   plt::title("CTE");
   plt::plot(cte_vals);
-  plt::subplot(3, 1, 2);
+  plt::subplot(4, 1, 2);
   plt::title("Delta (Radians)");
   plt::plot(delta_vals);
-  plt::subplot(3, 1, 3);
+  plt::subplot(4, 1, 3);
   plt::title("Velocity");
   plt::plot(v_vals);
+  plt::subplot(4, 1, 4);
+  plt::title("Trajectory");
+  plt::plot(x_vals, y_vals);
 
   plt::show();
 }

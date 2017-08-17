@@ -46,8 +46,9 @@ size_t delta_start = epsi_start + N;
 class FG_eval {
  public:
   Eigen::VectorXd coeffs;
+  double v;
   // Coefficients of the fitted polynomial.
-  FG_eval(Eigen::VectorXd coeffs) { this->coeffs = coeffs; }
+  FG_eval(Eigen::VectorXd coeffs, double v) { this->coeffs = coeffs; this->v = v;}
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   // `fg` is a vector containing the cost and constraints.
@@ -123,13 +124,13 @@ class FG_eval {
       // v_[t+1] = v[t] + a[t] * dt
       // cte[t+1] = f(x[t]) - y[t] + v[t] * sin(epsi[t]) * dt
       // epsi[t+1] = psi[t] - psides[t] + v[t] * delta[t] / Lf * dt
-      fg[1 + x_start + t] = x1 - (x0 + ref_v * CppAD::cos(psi0) * dt);
-      fg[1 + y_start + t] = y1 - (y0 + ref_v * CppAD::sin(psi0) * dt);
-      fg[1 + psi_start + t] = psi1 - (psi0 + ref_v * delta1 / Lf * dt);
+      fg[1 + x_start + t] = x1 - (x0 + v * CppAD::cos(psi0) * dt);
+      fg[1 + y_start + t] = y1 - (y0 + v * CppAD::sin(psi0) * dt);
+      fg[1 + psi_start + t] = psi1 - (psi0 + v * delta1 / Lf * dt);
       fg[1 + cte_start + t] =
-          cte1 - ((f0 - y0) + (ref_v * CppAD::sin(epsi0) * dt));
+          cte1 - ((f0 - y0) + (v * CppAD::sin(epsi0) * dt));
       fg[1 + epsi_start + t] =
-          epsi1 - ((psi0 - psides0) + ref_v * delta0 / Lf * dt);
+          epsi1 - ((psi0 - psides0) + v * delta0 / Lf * dt);
     }
   }
 };
@@ -141,7 +142,7 @@ class FG_eval {
 MPC::MPC() {}
 MPC::~MPC() {}
 
-vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) {
+vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter, double v) {
   size_t i;
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
@@ -217,7 +218,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   constraints_upperbound[epsi_start + N] = delta;
 
   // Object that computes objective and constraints
-  FG_eval fg_eval(coeffs);
+  FG_eval fg_eval(coeffs, v);
 
   // options
   std::string options;
@@ -244,12 +245,12 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter) 
   if (iter == 0) {  
     std::vector<double> cte_i = {solution.x[cte_start]};
     std::vector<double> delta_i = {solution.x[delta_start]};
-    std::vector<double> v_i = {ref_v};
+    std::vector<double> v_i = {v};
   
     for (int i=1; i < N; i++) {
       cte_i.push_back(solution.x[cte_start + i]);
       delta_i.push_back(solution.x[delta_start + i]);
-      v_i.push_back(ref_v);}
+      v_i.push_back(v);}
     
     plt::figure();
     plt::subplot(4, 1, 1);
@@ -342,7 +343,7 @@ int main() {
   std::vector<double> x_vals = {state[0]};
   std::vector<double> y_vals = {state[1]};
   std::vector<double> psi_vals = {state[2]};
-  std::vector<double> v_vals = {ref_v};
+  std::vector<double> v_vals = {v};
   std::vector<double> cte_vals = {state[3]};
   std::vector<double> epsi_vals = {state[4]};
   std::vector<double> delta_vals = {state[5]};
@@ -355,7 +356,7 @@ int main() {
 
     auto t1 = std::chrono::high_resolution_clock::now();
 
-    auto vars = mpc.Solve(state, coeffs, i);
+    auto vars = mpc.Solve(state, coeffs, i, v);
 
     auto t2 = std::chrono::high_resolution_clock::now();
     std::cout << "Delta t2-t1: "
@@ -366,7 +367,7 @@ int main() {
     x_vals.push_back(vars[0]);
     y_vals.push_back(vars[1]);
     psi_vals.push_back(vars[2]);
-    v_vals.push_back(ref_v);
+    v_vals.push_back(v);
     cte_vals.push_back(vars[3]);
     epsi_vals.push_back(vars[4]);
 
@@ -376,7 +377,7 @@ int main() {
     std::cout << "x = " << vars[0] << std::endl;
     std::cout << "y = " << vars[1] << std::endl;
     std::cout << "psi = " << vars[2] << std::endl;
-    std::cout << "v = " << ref_v << std::endl;
+    std::cout << "v = " << v << std::endl;
     std::cout << "cte = " << vars[3] << std::endl;
     std::cout << "epsi = " << vars[4] << std::endl;
     std::cout << "delta = " << vars[5] << std::endl;
