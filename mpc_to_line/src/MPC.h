@@ -16,7 +16,7 @@ class MPC {
   // Return the next state and actuations as a
   // vector.
   //vector<double> Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, double delta_last, double a_last);
-  vector<double> Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter, double v);
+  vector<double> Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter, double v, double dt);
 };
 
 #endif /* MPC_H */

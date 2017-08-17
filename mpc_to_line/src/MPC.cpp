@@ -47,8 +47,9 @@ class FG_eval {
  public:
   Eigen::VectorXd coeffs;
   double v;
+  double dt;
   // Coefficients of the fitted polynomial.
-  FG_eval(Eigen::VectorXd coeffs, double v) { this->coeffs = coeffs; this->v = v;}
+  FG_eval(Eigen::VectorXd coeffs, double v, double dt) { this->coeffs = coeffs; this->v = v; this->dt = dt;}
 
   typedef CPPAD_TESTVECTOR(AD<double>) ADvector;
   // `fg` is a vector containing the cost and constraints.
@@ -71,8 +72,10 @@ class FG_eval {
 
     // Minimize the value gap between sequential actuations.
     for (int t = 0; t < N - 1; t++) {
-      fg[0] += 500*CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+      fg[0] += 1.25 * CppAD::pow((vars[delta_start + t + 1] - vars[delta_start + t]) / dt, 2);
     }
+
+    fg[0] *= dt;
 
     //
     // Setup Constraints
@@ -142,7 +145,7 @@ class FG_eval {
 MPC::MPC() {}
 MPC::~MPC() {}
 
-vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter, double v) {
+vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter, double v, double dt) {
   size_t i;
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
@@ -218,7 +221,7 @@ vector<double> MPC::Solve(Eigen::VectorXd x0, Eigen::VectorXd coeffs, int iter, 
   constraints_upperbound[epsi_start + N] = delta;
 
   // Object that computes objective and constraints
-  FG_eval fg_eval(coeffs, v);
+  FG_eval fg_eval(coeffs, v, dt);
 
   // options
   std::string options;
@@ -356,7 +359,7 @@ int main() {
 
     auto t1 = std::chrono::high_resolution_clock::now();
 
-    auto vars = mpc.Solve(state, coeffs, i, v);
+    auto vars = mpc.Solve(state, coeffs, i, v, dt);
 
     auto t2 = std::chrono::high_resolution_clock::now();
     std::cout << "Delta t2-t1: "
